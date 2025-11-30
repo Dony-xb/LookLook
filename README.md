@@ -8,11 +8,6 @@
 
 ### 核心功能
 
-* 🔐 **用户认证系统**
-
-  * 手机号短信验证码注册/登录
-  * 用户会话管理
-
 * 📱 **瀑布流视频主页**
 
   * 上下滑动浏览视频
@@ -43,7 +38,7 @@
 
 ### 主要技术
 
-* **语言**: Java
+* **语言**: Kotlin
 * **UI框架**: Jetpack Compose
 * **架构**: MVVM + Repository
 
@@ -52,7 +47,8 @@
 * Android Studio 2024
 * Android SDK 24+
 * Git + GitHub
-
+* 华为云OBS云储存
+* 
 ### 第三方库
 
 * **网络**: Retrofit2 + OkHttp3
