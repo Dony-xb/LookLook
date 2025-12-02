@@ -17,6 +17,7 @@ android {
         versionName = "1.0.0"
         buildConfigField("String", "OSS_BASE_URL", "\"\"")
         buildConfigField("String", "DEBUG_LOCAL_VIDEO_PATH", "\"android.resource://com.looklook/raw/demo\"")
+        buildConfigField("String", "VIDEOS_BASE_URL", "\"https://dony-xb.github.io/LookLook_data/\"")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -76,6 +77,8 @@ dependencies {
 
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-datasource:1.4.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.4.1")
 
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")

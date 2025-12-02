@@ -44,6 +44,8 @@
 - 导航动画迁移至 AndroidX 官方实现，探索共享元素过渡
 - UI 风格细化：卡片信息、圆角阴影、占位骨架与加载策略
 - 播放优化：缓冲策略、错误重试、横竖屏 UI 与手势
+  - 交互增强（2025-12-01）：点击暂停显示标识、长按 2x/再次长按取消、底部极细进度条；底部文案分层（@用户名 + 描述），字体大小资源化
+  - 样式细化（2025-12-01）：主页作者头像圆形、封面标签圆角与半径资源化；播放页头像细白边与分享图标替换为自定义矢量并设白色；二倍速标识增大；暂停态覆盖图标改为播放三角形
 - 安全与合规：输入校验、权限最小化、HTTPS、日志隐私
  
 ## OSS接入方案与调试策略（2025-11-27）
@@ -137,3 +139,23 @@
   - `VideoFeedScreen`：`useController=false`，右侧头像+按钮列，底部描述；单击暂停/播放、长按 2x；READY 前显示封面缓冲
 - 验证：主页点击进入竖屏 Feed，无传统面板；未就绪显示封面，就绪后播放；手势与按钮交互正常
 - 参考代码：`app/src/main/java/com/looklook/navigation/NavGraph.kt`、`app/src/main/java/com/looklook/feature/home/ui/HomeScreen.kt`、`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt`
+- 远端接入问题与修复（2025-11-28）
+  - 症状：主页显示远端卡片，进入Feed白屏；视频未播放、缓冲层未显示
+  - 原因1：JSON链接含反引号/空格，导致播放器URI不合法
+  - 原因2：Pager初始页数为0，数据未到达时页面为空
+  - 解决：DTO映射时统一 `sanitizeUrl()`（去反引号与空格/trim）；`pageCount=max(1, size)` 并提供占位页；READY前始终显示封面覆盖层；`Uri.parse(cleanUrl)` 创建 MediaItem
+  - 验证：主页五条视频可见；Feed进入时显示封面缓冲，READY后正常播放；异常时保留UI并可重试
+- 播放性能诊断与优化（2025-11-28）
+  - 指标：首帧耗时、重缓冲次数/时长、丢帧、带宽估计；采集 Player Analytics 日志
+  - Player：LoadControl(min=15s,max=30s,playback=800ms,rebuffer=1500ms)、repeatMode=ONE、keepContentOnPlayerReset、裁剪缩放
+  - 数据源：OkHttpDataSource + SimpleCache（200MB）→ CacheDataSource；自定义UA与超时、支持重定向
+  - 预加载（2025-12-01）：当前页设置 `MediaItems(current,next)` 并 `prepare`；后台用 `CacheDataSource` 读取下一条视频前 512KB 进行热缓存；仅当前页绑定 `player`，非当前页显示封面与指示避免 Surface 竞争
+  - 资源化与可视调整（2025-12-01）：主页标签字体 `home_tag_text_size_sp` 与标签间距 `home_tag_padding_*`；播放页操作组右/下边距与间距/尺寸在 `dimens.xml` 可视化调整；进度条颜色/高度资源化
+  - 生命周期：退出时先暂停与清理绑定，避免残留；错误提示与重试入口
+  - 验证：首帧时间降低、滑动无黑屏、循环无停顿、退出丝滑
+- 竖屏视频滑动后完全露出卡住（Feed 页面）
+  - 症状：在 VerticalPager 中，滑动到下一个视频半露出时可以播放；当松手让页面 settle、下一个视频完全露出后卡住不再继续播放。首尾视频无此问题，仅中间视频复现。
+  - 原因：单实例 `ExoPlayer` 被同时绑定到多个 `PlayerView`（两个页面同时半可见），在页面 settle 时 Surface 切换/竞争导致渲染停止。
+  - 解决：仅为当前页的 `PlayerView` 绑定 `player`，其他页设置为 `null`；并将非当前页的封面与加载指示始终可见，避免空白/误显示。
+  - 代码：`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:126-134`（按当前页绑定 `view.player`）、`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:130-134`（非当前页强制封面/指示）。
+  - 验证：本地构建 `assembleDebug` 通过；在中间任意视频进行上下滑动后，页面完全露出时可正常继续播放，无卡住现象；首尾视频表现一致。

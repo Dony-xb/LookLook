@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Bookmark
@@ -17,18 +18,25 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.integerResource
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -36,12 +44,20 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.PlayArrow
 import com.looklook.core.model.Video
 import com.looklook.core.repository.VideoRepository
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.res.colorResource
+import androidx.compose.foundation.border
+import com.looklook.R
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -52,27 +68,47 @@ import javax.inject.Inject
 class VideoFeedViewModel @Inject constructor(
     private val repo: VideoRepository
 ) : ViewModel() {
-    val videos: StateFlow<List<Video>> = repo.getStaticVideos()
+    val videos: StateFlow<List<Video>> = repo.getRemoteVideos()
         .map { it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 }
 
 @Composable
 fun VideoFeedScreen(startIndex: Int, onBack: () -> Unit, vm: VideoFeedViewModel = hiltViewModel()) {
-    val context = LocalContext.current
-    val exoPlayer = remember { ExoPlayer.Builder(context).build() }
-    val pagerState = rememberPagerState(initialPage = startIndex) { vm.videos.value.size }
+    val playerVm: PlayerViewModel = hiltViewModel()
+    val exoPlayer = playerVm.player
+    val videosState = vm.videos.collectAsState()
+    val videos = videosState.value
+    val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, maxOf(0, videos.size - 1))) { maxOf(1, videos.size) }
     var ready by remember { mutableStateOf(false) }
     var liked by remember { mutableStateOf(false) }
     var collected by remember { mutableStateOf(false) }
-    LaunchedEffect(pagerState.currentPage, vm.videos.value) {
-        val list = vm.videos.value
-        if (list.isNotEmpty()) {
-            val url = list[pagerState.currentPage.coerceIn(list.indices)].streamUrl
-            exoPlayer.setMediaItem(MediaItem.fromUri(url))
+    var isDoubleSpeed by remember { mutableStateOf(false) }
+    var isPaused by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0f) }
+    LaunchedEffect(pagerState.currentPage, videos) {
+        val list = videos
+        val item = list.getOrNull(pagerState.currentPage)
+        if (item != null) {
+            val currentItem = MediaItem.fromUri(android.net.Uri.parse(item.streamUrl.trim()))
+            val nextItem = list.getOrNull(pagerState.currentPage + 1)?.let {
+                MediaItem.fromUri(android.net.Uri.parse(it.streamUrl.trim()))
+            }
+            val items = mutableListOf(currentItem)
+            if (nextItem != null) items.add(nextItem)
+            exoPlayer.setMediaItems(items, 0, androidx.media3.common.C.TIME_UNSET)
             exoPlayer.prepare()
-            ready = false
             exoPlayer.playWhenReady = true
+            ready = false
+            if (nextItem != null) {
+                playerVm.prefetch(list[pagerState.currentPage + 1].streamUrl)
+            }
+        }
+    }
+    LaunchedEffect(videos) {
+        if (videos.isNotEmpty()) {
+            val target = startIndex.coerceIn(0, videos.size - 1)
+            pagerState.scrollToPage(target)
         }
     }
     LaunchedEffect(exoPlayer) {
@@ -84,18 +120,28 @@ fun VideoFeedScreen(startIndex: Int, onBack: () -> Unit, vm: VideoFeedViewModel 
         }
         exoPlayer.addListener(listener)
     }
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            val item = vm.videos.value.getOrNull(page)
+            val item = videos.getOrNull(page)
             if (item != null) {
                 Box(modifier = Modifier.fillMaxSize().pointerInput(exoPlayer) {
                     detectTapGestures(
                         onTap = {
-                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                            exoPlayer.playbackParameters = PlaybackParameters(1f)
+                            if (exoPlayer.isPlaying) {
+                                exoPlayer.pause(); isPaused = true
+                            } else {
+                                exoPlayer.play(); isPaused = false
+                            }
+                            if (!isDoubleSpeed) exoPlayer.playbackParameters = PlaybackParameters(1f)
                         },
                         onLongPress = {
-                            exoPlayer.playbackParameters = PlaybackParameters(2f)
+                            if (isDoubleSpeed) {
+                                exoPlayer.playbackParameters = PlaybackParameters(1f)
+                                isDoubleSpeed = false
+                            } else {
+                                exoPlayer.playbackParameters = PlaybackParameters(2f)
+                                isDoubleSpeed = true
+                            }
                         }
                     )
                 }) {
@@ -105,26 +151,83 @@ fun VideoFeedScreen(startIndex: Int, onBack: () -> Unit, vm: VideoFeedViewModel 
                             PlayerView(ctx).apply {
                                 useController = false
                                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                                player = exoPlayer
+                                setKeepContentOnPlayerReset(true)
                             }
                         },
-                        update = { it.player = exoPlayer }
+                        update = { view ->
+                            view.player = if (page == pagerState.currentPage) exoPlayer else null
+                        }
                     )
-                    if (!ready) {
+                    val showCover = page != pagerState.currentPage || !ready
+                    if (showCover) {
                         AsyncImage(model = item.coverUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
-                    Column(modifier = Modifier.align(Alignment.CenterEnd).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        AsyncImage(model = item.authorAvatar, contentDescription = null, modifier = Modifier.size(48.dp))
-                        IconButton(onClick = { liked = !liked }) { Icon(imageVector = Icons.Filled.Favorite, contentDescription = null, tint = if (liked) androidx.compose.ui.graphics.Color.Red else androidx.compose.ui.graphics.Color.White) }
-                        IconButton(onClick = { /* TODO: comment */ }) { Icon(imageVector = Icons.Filled.Favorite, contentDescription = null) }
-                        IconButton(onClick = { collected = !collected }) { Icon(imageVector = Icons.Filled.Bookmark, contentDescription = null, tint = if (collected) androidx.compose.ui.graphics.Color.Yellow else androidx.compose.ui.graphics.Color.White) }
-                        IconButton(onClick = { /* TODO: share */ }) { Icon(imageVector = Icons.Filled.Share, contentDescription = null) }
+                    if (isPaused) {
+                        androidx.compose.material3.Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.align(Alignment.Center).size(64.dp)
+                        )
                     }
-                    AsyncImage(model = item.authorAvatar, contentDescription = null, modifier = Modifier.align(Alignment.CenterEnd).padding(16.dp))
-                    Text(text = item.authorName, modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), fontWeight = FontWeight.Bold)
-                    Text(text = item.title, modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 40.dp))
+                    if (isDoubleSpeed) {
+                        Text(
+                            text = "2x",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = integerResource(R.integer.video_speed_indicator_text_size_sp).sp,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)
+                        )
+                    }
+                    run {
+                        val marginEnd = dimensionResource(R.dimen.video_actions_margin_end)
+                        val marginBottom = dimensionResource(R.dimen.video_actions_margin_bottom)
+                        val spacing = dimensionResource(R.dimen.video_actions_spacing)
+                        val avatarSize = dimensionResource(R.dimen.video_author_avatar_size)
+                        val iconSize = dimensionResource(R.dimen.video_action_icon_size)
+
+                        Column(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = marginEnd, bottom = marginBottom),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(spacing)
+                        ) {
+                            AsyncImage(model = item.authorAvatar, contentDescription = null, modifier = Modifier.size(avatarSize).clip(androidx.compose.foundation.shape.CircleShape).border(dimensionResource(R.dimen.video_author_avatar_border_width), Color.White, androidx.compose.foundation.shape.CircleShape))
+                            IconButton(onClick = { liked = !liked }) { Icon(imageVector = Icons.Filled.Favorite, contentDescription = null, tint = if (liked) androidx.compose.ui.graphics.Color.Red else androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(iconSize)) }
+                            IconButton(onClick = { /* TODO: comment */ }) { Icon(imageVector = Icons.Filled.ChatBubble, contentDescription = null, tint = Color.White, modifier = Modifier.size(iconSize)) }
+                            IconButton(onClick = { collected = !collected }) { Icon(imageVector = Icons.Filled.Bookmark, contentDescription = null, tint = if (collected) androidx.compose.ui.graphics.Color.Yellow else androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(iconSize)) }
+                            IconButton(onClick = { /* TODO: share */ }) { androidx.compose.material3.Icon(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_share_douyin), contentDescription = null, tint = Color.White, modifier = Modifier.size(iconSize)) }
+                        }
+                    }
+                    val usernameSize = integerResource(R.integer.video_username_text_size_sp).sp
+                    val descSize = integerResource(R.integer.video_description_text_size_sp).sp
+                    Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 40.dp)) {
+                        Text(text = "@" + item.authorName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = usernameSize)
+                        Text(text = item.description ?: "", color = Color.White, fontSize = descSize)
+                    }
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = progress,
+                        color = colorResource(R.color.video_progress_color),
+                        trackColor = colorResource(R.color.video_progress_track_color),
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(dimensionResource(R.dimen.video_progress_height))
+                    )
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
             }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { exoPlayer.pause() }
+    }
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            val d = exoPlayer.duration
+            val p = exoPlayer.currentPosition
+            progress = if (d > 0) (p.toFloat() / d.toFloat()).coerceIn(0f, 1f) else 0f
+            kotlinx.coroutines.delay(100)
         }
     }
 }

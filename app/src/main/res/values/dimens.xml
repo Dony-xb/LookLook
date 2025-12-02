@@ -1,0 +1,22 @@
+<resources>
+    <dimen name="home_grid_spacing">4dp</dimen>
+    <dimen name="home_card_elevation">4dp</dimen>
+    <dimen name="home_card_radius">5dp</dimen>
+    <dimen name="home_tag_padding_h">1dp</dimen>
+    <dimen name="home_tag_padding_v">1dp</dimen>
+    <dimen name="home_tag_min_width">20dp</dimen>
+    <dimen name="home_tag_height">15dp</dimen>
+    <dimen name="home_title_padding_h">8dp</dimen>
+    <dimen name="home_title_padding_v">6dp</dimen>
+    <dimen name="home_author_avatar_size">19dp</dimen>
+    <dimen name="home_topbar_padding_v">11dp</dimen>
+
+    <dimen name="video_actions_margin_end">5dp</dimen>
+    <dimen name="video_actions_margin_bottom">180dp</dimen>
+    <dimen name="video_actions_spacing">3dp</dimen>
+    <dimen name="video_author_avatar_size">48dp</dimen>
+    <dimen name="video_action_icon_size">32dp</dimen>
+    <dimen name="video_progress_height">2dp</dimen>
+    <dimen name="home_tag_radius">5dp</dimen>
+    <dimen name="video_author_avatar_border_width">1dp</dimen>
+</resources>

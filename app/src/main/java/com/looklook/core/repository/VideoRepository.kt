@@ -2,11 +2,15 @@ package com.looklook.core.repository
 
 import com.looklook.core.model.Video
 import com.looklook.BuildConfig
+import com.looklook.core.network.api.RemoteVideoApi
+import com.looklook.core.network.dto.VideoDto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 
-class VideoRepository @Inject constructor() {
+class VideoRepository @Inject constructor(
+    private val remoteApi: RemoteVideoApi
+) {
     fun getLocalDebugVideoList(): List<Video> = listOf(
         Video(
             id = "local-1",
@@ -18,43 +22,29 @@ class VideoRepository @Inject constructor() {
             authorAvatar = "https://picsum.photos/seed/localav/100/100"
         )
     )
-    fun getStaticVideos(): Flow<List<Video>> = flow {
-        val local = getLocalDebugVideoList()
-        if (local.isNotEmpty()) {
-            emit(local)
-        } else {
-            emit(
-            listOf(
-                Video(
-                    id = "1",
-                    title = "夏日街头纪实",
-                    tags = listOf("街拍", "夏日"),
-                    coverUrl = "https://picsum.photos/seed/1/600/800",
-                    streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-                    authorName = "Luna",
-                    authorAvatar = "https://picsum.photos/seed/a1/100/100"
-                ),
-                Video(
-                    id = "2",
-                    title = "城市夜景延时",
-                    tags = listOf("延时", "夜景"),
-                    coverUrl = "https://picsum.photos/seed/2/600/800",
-                    streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-                    authorName = "Noah",
-                    authorAvatar = "https://picsum.photos/seed/a2/100/100"
-                ),
-                Video(
-                    id = "3",
-                    title = "晨跑vlog",
-                    tags = listOf("运动", "健康"),
-                    coverUrl = "https://picsum.photos/seed/3/600/800",
-                    streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-                    authorName = "Ivy",
-                    authorAvatar = "https://picsum.photos/seed/a3/100/100"
-                )
-            )
-        )
+    fun getStaticVideos(): Flow<List<Video>> = flow { emit(emptyList()) }
+
+    fun getRemoteVideos(): Flow<List<Video>> = flow {
+        try {
+            val resp = remoteApi.fetch()
+            val mapped = resp.videos.map { it.toDomain() }
+            emit(mapped)
+        } catch (e: Exception) {
+            emit(getLocalDebugVideoList())
         }
     }
 }
 
+private fun VideoDto.toDomain(): Video = Video(
+    id = id,
+    title = title,
+    description = description,
+    tags = tags,
+    coverUrl = sanitizeUrl(coverUrl),
+    streamUrl = sanitizeUrl(videoUrl),
+    authorName = user.username,
+    authorAvatar = sanitizeUrl(user.avatarUrl)
+)
+
+private fun sanitizeUrl(u: String?): String =
+    (u ?: "").trim().trim('`').replace(" ", "")
