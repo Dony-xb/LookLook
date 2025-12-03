@@ -4,5 +4,8 @@
     <integer name="home_tag_text_size_sp">13</integer>
     <integer name="video_username_text_size_sp">18</integer>
     <integer name="video_description_text_size_sp">15</integer>
-    <integer name="video_speed_indicator_text_size_sp">16</integer>
+    <integer name="video_speed_indicator_text_size_sp">20</integer>
+    <integer name="video_speed_indicator_position">1</integer>
+    <integer name="video_action_count_text_size_sp">12</integer>
+    <integer name="video_date_text_size_sp">10</integer>
 </resources>

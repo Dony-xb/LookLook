@@ -53,14 +53,23 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.LazyPagingItems
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import coil.ImageLoader
+import coil.request.ImageRequest
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repo: VideoRepository
+    private val api: com.looklook.core.network.api.RemoteVideoApi
 ) : ViewModel() {
-    val videos: StateFlow<List<Video>> = repo.getRemoteVideos()
-        .map { it }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val pager = Pager(config = PagingConfig(pageSize = 10, prefetchDistance = 5)) {
+        com.looklook.core.repository.VideoPagingSource(api, 10)
+    }.flow
 }
 
 @Composable
@@ -70,7 +79,10 @@ fun HomeScreen(
     onOpenLogin: () -> Unit,
     vm: HomeViewModel = hiltViewModel()
 ) {
-    val list by vm.videos.collectAsState()
+    val pagingItems: LazyPagingItems<Video> = vm.pager.collectAsLazyPagingItems()
+    val gridState = rememberLazyGridState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val imageLoader = coil.compose.LocalImageLoader.current
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = dimensionResource(R.dimen.home_topbar_padding_v)), contentAlignment = Alignment.Center) {
             Text("推荐", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
@@ -83,12 +95,17 @@ fun HomeScreen(
         }
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
+            state = gridState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(dimensionResource(R.dimen.home_grid_spacing)),
             horizontalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.home_grid_spacing)),
             verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.home_grid_spacing))
         ) {
-            itemsIndexed(list, key = { _, it -> it.id }) { index, item ->
+            items(pagingItems.itemCount, key = { index ->
+                val it = pagingItems.peek(index)
+                ((it?.id ?: "unknown") + "#" + index)
+            }) { index ->
+                val item = pagingItems[index]
                 Card(
                     modifier = Modifier.clickable { onOpenVideo(index) },
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -98,48 +115,69 @@ fun HomeScreen(
                     Box {
                         val aspect = integerResource(R.integer.home_card_aspect_x).toFloat() / integerResource(R.integer.home_card_aspect_y).toFloat()
                         Image(
-                            painter = rememberAsyncImagePainter(item.coverUrl),
+                            painter = rememberAsyncImagePainter(item?.coverUrl),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(aspect)
                         )
-                        Box(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .background(colorResource(R.color.home_tag_bg), shape = RoundedCornerShape(dimensionResource(R.dimen.home_tag_radius)))
-                                .defaultMinSize(
-                                    minWidth = dimensionResource(R.dimen.home_tag_min_width),
-                                    minHeight = dimensionResource(R.dimen.home_tag_height)
-                                )
-                        ) {
-                            Text(
-                                text = "推荐",
-                                color = colorResource(R.color.home_tag_text),
+                        val homeTag = item?.homeTag?.trim()
+                        if (!homeTag.isNullOrEmpty()) {
+                            Box(
                                 modifier = Modifier
-                                    .padding(
-                                        horizontal = dimensionResource(R.dimen.home_tag_padding_h),
-                                        vertical = dimensionResource(R.dimen.home_tag_padding_v)
+                                    .padding(8.dp)
+                                    .background(colorResource(R.color.home_tag_bg), shape = RoundedCornerShape(dimensionResource(R.dimen.home_tag_radius)))
+                                    .defaultMinSize(
+                                        minWidth = dimensionResource(R.dimen.home_tag_min_width),
+                                        minHeight = dimensionResource(R.dimen.home_tag_height)
                                     )
-                                ,
-                                fontSize = integerResource(R.integer.home_tag_text_size_sp).sp
-                            )
+                            ) {
+                                Text(
+                                    text = homeTag,
+                                    color = colorResource(R.color.home_tag_text),
+                                    modifier = Modifier
+                                        .padding(
+                                            horizontal = dimensionResource(R.dimen.home_tag_padding_h),
+                                            vertical = dimensionResource(R.dimen.home_tag_padding_v)
+                                        )
+                                    ,
+                                    fontSize = integerResource(R.integer.home_tag_text_size_sp).sp
+                                )
+                            }
                         }
                     }
                     Text(
-                        text = item.title,
+                        text = item?.title ?: "",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                         modifier = Modifier.padding(horizontal = dimensionResource(R.dimen.home_title_padding_h), vertical = dimensionResource(R.dimen.home_title_padding_v)),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Row(modifier = Modifier.padding(horizontal = dimensionResource(R.dimen.home_title_padding_h), vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Image(painter = rememberAsyncImagePainter(item.authorAvatar), contentDescription = null, modifier = Modifier.size(dimensionResource(R.dimen.home_author_avatar_size)).clip(CircleShape), contentScale = ContentScale.Crop)
-                        Text(text = item.authorName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        Image(painter = rememberAsyncImagePainter(item?.authorAvatar), contentDescription = null, modifier = Modifier.size(dimensionResource(R.dimen.home_author_avatar_size)).clip(CircleShape), contentScale = ContentScale.Crop)
+                        Text(text = item?.authorName ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                     }
                 }
             }
+        }
+
+        LaunchedEffect(gridState) {
+            snapshotFlow { gridState.layoutInfo.visibleItemsInfo }
+                .collect { visible ->
+                    val maxIndex = visible.maxOfOrNull { it.index } ?: 0
+                    val prefetchRange = (maxIndex + 1)..minOf(maxIndex + 8, pagingItems.itemCount - 1)
+                    prefetchRange.forEach { idx ->
+                        val v = pagingItems.peek(idx)
+                        val url = v?.coverUrl ?: return@forEach
+                        imageLoader.enqueue(
+                            ImageRequest.Builder(ctx).data(url).build()
+                        )
+                    }
+                    if (pagingItems.itemCount - maxIndex < 6) {
+                        pagingItems.retry()
+                    }
+                }
         }
     }
 }

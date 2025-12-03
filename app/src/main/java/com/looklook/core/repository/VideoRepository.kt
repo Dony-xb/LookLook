@@ -43,7 +43,12 @@ private fun VideoDto.toDomain(): Video = Video(
     coverUrl = sanitizeUrl(coverUrl),
     streamUrl = sanitizeUrl(videoUrl),
     authorName = user.username,
-    authorAvatar = sanitizeUrl(user.avatarUrl)
+    authorAvatar = sanitizeUrl(user.avatarUrl),
+    likesCount = stats?.likesCount,
+    commentsCount = stats?.commentsCount,
+    sharesCount = stats?.sharesCount,
+    createdAt = createdAt,
+    homeTag = homeTag
 )
 
 private fun sanitizeUrl(u: String?): String =

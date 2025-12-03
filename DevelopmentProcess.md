@@ -150,7 +150,11 @@
   - Player：LoadControl(min=15s,max=30s,playback=800ms,rebuffer=1500ms)、repeatMode=ONE、keepContentOnPlayerReset、裁剪缩放
   - 数据源：OkHttpDataSource + SimpleCache（200MB）→ CacheDataSource；自定义UA与超时、支持重定向
   - 预加载（2025-12-01）：当前页设置 `MediaItems(current,next)` 并 `prepare`；后台用 `CacheDataSource` 读取下一条视频前 512KB 进行热缓存；仅当前页绑定 `player`，非当前页显示封面与指示避免 Surface 竞争
-  - 资源化与可视调整（2025-12-01）：主页标签字体 `home_tag_text_size_sp` 与标签间距 `home_tag_padding_*`；播放页操作组右/下边距与间距/尺寸在 `dimens.xml` 可视化调整；进度条颜色/高度资源化
+  - 资源化与可视调整（2025-12-01）：主页标签字体 `home_tag_text_size_sp` 与标签间距 `home_tag_padding_*`；播放页操作组右/下边距与间距/尺寸在 `dimens.xml` 可视化调整；进度条颜色/高度资源化；播放页 2x 标识位置抽取到 `integers.xml` 的 `video_speed_indicator_position`（0..6 对应 Top/Center/Bottom 三行三列），边距抽取到 `dimens.xml` 的 `video_speed_indicator_margin_*`
+- 展示增强（2025-12-02）：数据模型扩展计数与日期；播放页图标下显示点赞/评论/分享数量，右下角显示创建日期（深灰），描述末尾追加 `#tag` 列表；数量与日期字体资源化
+- 首页崩溃修复（2025-12-02）：远端 JSON 存在重复 `id`，Compose LazyGrid 要求唯一 `key`；改用 `id+index` 作为 key，避免重复引发的 `IllegalArgumentException`
+ - 主页与播放页预加载优化（2025-12-02）：主页引入 Paging3（演示分页）与封面预取（Coil），末端加载信号触发下一页；播放页记录下一条视频预取命中并在切换页时跳过封面直接播放；页切换瞬间关闭 `keepContentOnPlayerReset` 并在首帧回调后恢复，避免显示上一条残帧；设置黑色 shutter 背景与禁用 artwork
+  - 残帧闪烁进一步修复（2025-12-02）：切换到新媒体前调用 `player.clearVideoSurface()`，切换期关闭 `keepContentOnPlayerReset`，在 `STATE_READY`/首帧后恢复；禁用 artwork 与黑色 shutter 背景，消除上一条视频的残帧闪烁
   - 生命周期：退出时先暂停与清理绑定，避免残留；错误提示与重试入口
   - 验证：首帧时间降低、滑动无黑屏、循环无停顿、退出丝滑
 - 竖屏视频滑动后完全露出卡住（Feed 页面）
@@ -159,3 +163,42 @@
   - 解决：仅为当前页的 `PlayerView` 绑定 `player`，其他页设置为 `null`；并将非当前页的封面与加载指示始终可见，避免空白/误显示。
   - 代码：`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:126-134`（按当前页绑定 `view.player`）、`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:130-134`（非当前页强制封面/指示）。
   - 验证：本地构建 `assembleDebug` 通过；在中间任意视频进行上下滑动后，页面完全露出时可正常继续播放，无卡住现象；首尾视频表现一致。
+
+### 播放黑屏但有声音问题修复（2025-12-03）
+- 症状：进入播放页后只有声音，视频区域始终黑色；右侧操作组与底部文案正常显示
+- 原因：页面切换及滚动时播放器未及时重绑到当前视图，导致视频帧无法渲染
+- 解决：
+  - 始终仅为当前页的 `PlayerView` 绑定 `player`，移除滚动状态下的绑定限制，确保绑定及时
+  - 取消不必要的 `clearVideoSurface()` 调用，避免清理后未重绑导致黑屏
+  - 设置 `RESIZE_MODE_ZOOM` 以确保裁剪/填充显示合理
+- 参考代码：`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:191`（`setResizeMode(RESIZE_MODE_ZOOM)`）、`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:200-201`（仅当前页绑定 `player`）
+- 验证：进入播放页可见视频画面且声音同步；滑动切换页无黑屏，预加载与首帧呈现正常
+
+### 播放页切换残帧闪烁修复（2025-12-03）
+- 症状：上下滑到下一条视频时短暂闪现上一条画面然后才开始播放，感觉卡顿
+- 原因：切换阶段 `PlayerView` 保留上一条内容（`keepContentOnPlayerReset=true`）展示旧帧；且媒体切换由“滚动停止”触发，导致残留帧在可见窗口内出现
+- 解决：
+  - 切换开始将 `switching=true` 并立即切换媒体（去除滚动状态限制）
+  - `AndroidView.update` 中根据 `switching` 切换 `setKeepContentOnPlayerReset(!switching)`，READY/首帧后恢复
+  - 保持仅当前页绑定 `player`，避免多 Surface 竞争
+- 参考代码：`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:95-116`、`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:194-201`
+- 验证：切换到下一条不再闪回上一个视频，首帧呈现平滑，卡顿明显减少
+
+### 播放页切换“闪黑”修复（2025-12-03）
+- 症状：下滑切换到新视频时短暂黑屏后再呈现，虽已加载好但有卡顿感
+- 原因：切换阶段为避免旧帧显示而关闭了 `keepContentOnPlayerReset`，导致 `PlayerView` 显示黑色 shutter；READY 到达前会出现“黑屏窗口”
+- 解决：
+  - 将 `PlayerView` 的 shutter 背景改为透明
+  - 在未 READY 或非当前页时覆盖显示 `coverUrl` 全屏封面，READY/首帧后移除封面
+  - 仅当前页绑定 `player`，保持切换绑定及时与稳定
+- 参考代码：`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:191`、`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:205-213`
+- 验证：切换到新视频不再出现闪黑，画面平滑呈现
+
+### 封面就绪后短闪问题修复（2025-12-03）
+- 症状：页面就绪后仍会短暂显示封面，然后才开始播放
+- 原因：在媒体未变化的情况下重复执行切换流程，并手动将 `ready=false`，导致封面被错误显示
+- 解决：
+  - 比较播放器当前 `MediaItem` 的 URI 与目标 URI，仅在不一致时才切换
+  - 移除手动 `ready=false` 的设置，改由 `Player.Listener` 的 `STATE_READY`/首帧回调维护界面状态
+- 参考代码：`app/src/main/java/com/looklook/feature/video/ui/VideoFeedScreen.kt:95-116`
+- 验证：页面就绪后不再出现封面闪现，播放过程连续平滑

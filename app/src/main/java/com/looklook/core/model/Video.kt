@@ -8,6 +8,11 @@ data class Video(
     val coverUrl: String,
     val streamUrl: String,
     val authorName: String,
-    val authorAvatar: String
+    val authorAvatar: String,
+    val likesCount: Int? = null,
+    val commentsCount: Int? = null,
+    val sharesCount: Int? = null,
+    val createdAt: String? = null,
+    val homeTag: String? = null
 )
 

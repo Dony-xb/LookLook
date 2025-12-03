@@ -31,6 +31,7 @@ class PlayerViewModel @Inject constructor(
     val player: ExoPlayer
     private val upstream: DataSource.Factory
     private val cacheFactory: CacheDataSource.Factory
+    private val prefetched = mutableSetOf<String>()
 
     init {
         upstream = OkHttpDataSource.Factory(okHttpClient)
@@ -84,9 +85,12 @@ class PlayerViewModel @Inject constructor(
                     if (r > 0) readTotal += r
                 }
                 ds.close()
+                synchronized(prefetched) { prefetched.add(clean) }
             } catch (t: Throwable) {
                 Timber.w(t)
             }
         }
     }
+
+    fun isPrefetched(url: String?): Boolean = synchronized(prefetched) { url != null && prefetched.contains(url.trim()) }
 }

@@ -24,6 +24,11 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.looklook.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.res.dimensionResource
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -36,8 +41,11 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1200); showSplash = false }
                     if (showSplash) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Image(painter = painterResource(R.drawable.applogo_trans), contentDescription = null, modifier = Modifier.fillMaxWidth(0.5f))
-                            Text(text = "Look the world you like", fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Image(painter = painterResource(R.drawable.applogo_trans), contentDescription = null, modifier = Modifier.fillMaxWidth(0.5f))
+                                Spacer(modifier = Modifier.height(dimensionResource(R.dimen.splash_text_margin_top)))
+                                Text(text = stringResource(R.string.splash_tagline), fontWeight = FontWeight.Medium)
+                            }
                         }
                     } else {
                         NavGraph()

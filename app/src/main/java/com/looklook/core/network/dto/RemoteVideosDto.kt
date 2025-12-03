@@ -1,6 +1,7 @@
 package com.looklook.core.network.dto
 
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Json
 
 @JsonClass(generateAdapter = true)
 data class VideosResponse(
@@ -17,7 +18,8 @@ data class VideoDto(
     val user: UserDto,
     val tags: List<String> = emptyList(),
     val stats: StatsDto? = null,
-    val createdAt: String?
+    val createdAt: String?,
+    @Json(name = "hometag") val homeTag: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -29,7 +31,7 @@ data class UserDto(
 
 @JsonClass(generateAdapter = true)
 data class StatsDto(
-    val likesCount: Int,
-    val commentsCount: Int,
-    val sharesCount: Int
+    val likesCount: Int?,
+    val commentsCount: Int?,
+    val sharesCount: Int?
 )

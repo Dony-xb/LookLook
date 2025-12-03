@@ -5,4 +5,5 @@
     <color name="video_progress_track_color">#40FFFFFF</color>
     <color name="video_pause_indicator_tint">#CCFFFFFF</color>
     <color name="video_speed_indicator_tint">#FFFFFFFF</color>
+    <color name="video_date_text_color">#808080</color>
 </resources>
